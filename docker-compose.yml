@@ -1,0 +1,134 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user_service/Dockerfile
+    container_name: user-service
+    ports:
+      - "8000:8000"
+      - "50050:50050"
+    environment:
+      - HTTP_PORT=8000
+      - GRPC_PORT=50050
+      - HTTP_HOST=0.0.0.0
+      - GRPC_HOST=0.0.0.0
+      - USER_DATABASE_URL=postgresql+asyncpg://app:app@postgres:5432/users
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 8s
+    restart: unless-stopped
+
+  product-service:
+    build:
+      context: .
+      dockerfile: product_service/Dockerfile
+    container_name: product-service
+    ports:
+      - "8001:8001"
+      - "50051:50051"
+    environment:
+      - HTTP_PORT=8001
+      - GRPC_PORT=50051
+      - HTTP_HOST=0.0.0.0
+      - GRPC_HOST=0.0.0.0
+      - PRODUCT_DATABASE_URL=postgresql+asyncpg://app:app@postgres:5432/products
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 8s
+    restart: unless-stopped
+
+  order-service:
+    build:
+      context: .
+      dockerfile: order_service/Dockerfile
+    container_name: order-service
+    ports:
+      - "8002:8002"
+    environment:
+      - HTTP_PORT=8002
+      - HTTP_HOST=0.0.0.0
+      - PRODUCT_SERVICE_GRPC_HOST=product-service
+      - PRODUCT_SERVICE_GRPC_PORT=50051
+      - USER_SERVICE_GRPC_HOST=user-service
+      - USER_SERVICE_GRPC_PORT=50050
+      - ORDER_DATABASE_URL=postgresql+asyncpg://app:app@postgres:5432/orders
+    depends_on:
+      postgres:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 8s
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api_gateway/Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - HTTP_PORT=8080
+      - HTTP_HOST=0.0.0.0
+      - USER_SERVICE_GRPC_HOST=user-service
+      - USER_SERVICE_GRPC_PORT=50050
+      - PRODUCT_SERVICE_GRPC_HOST=product-service
+      - PRODUCT_SERVICE_GRPC_PORT=50051
+      - USER_SERVICE_HTTP_URL=http://user-service:8000
+      - ORDER_SERVICE_HTTP_URL=http://order-service:8002
+    depends_on:
+      user-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 8s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

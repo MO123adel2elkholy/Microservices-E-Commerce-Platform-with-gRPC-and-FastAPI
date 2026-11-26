@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package product;
+
+// ── Messages ────────────────────────────────────────────
+
+message ProductRequest {
+  string product_id = 1;
+}
+
+message ProductResponse {
+  string product_id = 1;
+  string name = 2;
+  string description = 3;
+  double price = 4;
+  int32 stock = 5;
+  bool available = 6;
+}
+
+message ProductListRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ProductListResponse {
+  repeated ProductResponse products = 1;
+  int32 total = 2;
+}
+
+message ProductValidationRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message ProductValidationResponse {
+  bool valid = 1;
+  string message = 2;
+  double unit_price = 3;
+  double total_price = 4;
+}
+
+// ── Service ─────────────────────────────────────────────
+
+service ProductService {
+  rpc GetProduct (ProductRequest) returns (ProductResponse);
+  rpc ListProducts (ProductListRequest) returns (ProductListResponse);
+  rpc ValidateProduct (ProductValidationRequest) returns (ProductValidationResponse);
+}
